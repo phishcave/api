@@ -152,7 +152,7 @@ func (u *Upload) finish(writersLeft int, timeout bool) {
 	}
 
 	if err = u.File.Close(); err != nil {
-		log.Printf("finishUpload: File failed to close %q:", u.FileInfo.Name, err)
+		log.Printf("finishUpload: File failed to close %q: %v", u.FileInfo.Name, err)
 		goto Cleanup
 	} else {
 		closed = true
@@ -234,7 +234,7 @@ func runCmd(output *bytes.Buffer, name, cmd string, args ...string) error {
 	}
 
 	if err := command.Run(); err != nil {
-		log.Printf("postProcess: The command %q [%v] failed to run on %q (%v)", cmd, args, err)
+		log.Printf("postProcess: The command %q [%v] failed to run on %q (%v)", cmd, args, name, err)
 		return err
 	}
 

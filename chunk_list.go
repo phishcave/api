@@ -31,7 +31,7 @@ func (c ChunkList) IsComplete(nChunks int) bool {
 
 func (c ChunkList) ToArray() (arr []int) {
 	for i, byt := range c {
-		for bit := uint(0); bit < 64; bit += 1 {
+		for bit := uint(0); bit < 64; bit++ {
 			if byt&(1<<bit) != 0 {
 				arr = append(arr, i*64+int(bit))
 			}
