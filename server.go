@@ -23,8 +23,9 @@ const (
 )
 
 var (
-	uploadNotFound = errors.New("upload not found")
-	badRequest     = errors.New("bad request")
+	errUploadNotFound   = errors.New("upload not found")
+	errBadRequest       = errors.New("bad request")
+	errAlreadyUploading = errors.New("already uploading")
 )
 
 func main() {
@@ -56,6 +57,11 @@ type UploadRequest struct {
 	ChunkSize int    `json:"chunk_size,omitempty"`
 }
 
+// String returns a "unique" identifier for this UploadRequest.
+func (u UploadRequest) String() string {
+	return u.Name + strconv.FormatInt(u.Size, 10) + strconv.Itoa(u.Chunks) + strconv.Itoa(u.ChunkSize)
+}
+
 type UploadResponse struct {
 	ID     uint   `json:"upload_id,omitempty"`
 	Status string `json:"status"`
@@ -80,12 +86,12 @@ func getUploadID(r *http.Request) (uint, error) {
 	str, ok := vals[urlUploadID]
 
 	if !ok {
-		return 0, badRequest
+		return 0, errBadRequest
 	}
 
 	bigID, err := strconv.ParseUint(str, 10, 32)
 	if err != nil {
-		return 0, badRequest
+		return 0, errBadRequest
 	}
 
 	return uint(bigID), nil
@@ -103,7 +109,7 @@ func getUpload(r *http.Request) (upload *Upload, err error) {
 	uploadMut.RUnlock()
 
 	if !ok {
-		return nil, uploadNotFound
+		return nil, errUploadNotFound
 	}
 
 	return upload, nil

@@ -23,8 +23,9 @@ const (
 )
 
 var (
-	uploads   map[uint]*Upload
-	uploadMut sync.RWMutex
+	uploads    map[uint]*Upload
+	currentUpl map[string]struct{}
+	uploadMut  sync.RWMutex
 )
 
 type Upload struct {
@@ -78,6 +79,7 @@ func createSlot(req UploadRequest) (uint, error) {
 			break
 		}
 	}
+	currentUpl[req.String()] = struct{}{}
 	uploadMut.Unlock()
 
 	go upload.manage()
@@ -114,6 +116,7 @@ func (u *Upload) manage() {
 }
 
 func (u *Upload) finish(writersLeft int, timeout bool) {
+	// Stop any further writing before it begins
 	close(u.WriteStart)
 	close(u.Status)
 
@@ -122,50 +125,56 @@ func (u *Upload) finish(writersLeft int, timeout bool) {
 		<-u.WriteEnd
 	}
 
-	failure := false
-	if timeout {
-		log.Printf("finishUpload: The upload (%s) timed out", u.FileInfo.Name)
-		failure = true
-	}
-
 	var sha string
 	var err error
-	if !failure {
-		sha, err = sha256sum(u.File)
-		if err != nil {
-			log.Printf("finishUpload: Failed to hash the file %q (%v)", u.FileInfo.Name, err)
-			failure = true
-		}
+	var closed bool
+	var oldFileName, newFileName string
+	var postProcessing func(UploadRequest, string) // If postprocessing should happen, this will be assigned to
+
+	if timeout {
+		log.Printf("finishUpload: The upload (%s) timed out", u.FileInfo.Name)
+		goto Cleanup
+	}
+
+	sha, err = sha256sum(u.File)
+	if err != nil {
+		log.Printf("finishUpload: Failed to hash the file %q (%v)", u.FileInfo.Name, err)
+		goto Cleanup
 	}
 
 	if err = u.File.Close(); err != nil {
-		log.Println("finishUpload: File failed to close %q:", u.FileInfo.Name, err)
-		failure = true
+		log.Printf("finishUpload: File failed to close %q:", u.FileInfo.Name, err)
+		goto Cleanup
+	} else {
+		closed = true
 	}
 
-	// Remove this temp file no matter what, if it's been moved and
-	// this fails, we don't care.
-	oldFileName := u.File.Name()
-	defer os.Remove(oldFileName)
-	if failure {
-		return
-	}
-
-	newFileName := filepath.Join(savePath, sha)
-
-	if err := os.Rename(oldFileName, newFileName); err != nil {
+	newFileName = filepath.Join(savePath, sha)
+	if err = os.Rename(oldFileName, newFileName); err != nil {
 		fmt.Printf("Rename: Failed to move file %q -> %q (%v)", oldFileName, newFileName, err)
-		return
+		goto Cleanup
 	}
 
 	// TODO(dylanj): Update DB with details
 
+	postProcessing = u.postProcess // Set the postProcessing handler
+
+Cleanup:
 	close(u.FinishLatch) // Ready to serve the files to the user
-	u.postProcess(u.FileInfo, newFileName)
+	if postProcessing != nil {
+		postProcessing(u.FileInfo, newFileName)
+	}
 	close(u.PostProcessLatch) // Ready to serve postprocessed files like thumbnails
+
+	// If the download timed out or SHA256 failed, we won't have closed the file yet.
+	if !closed {
+		u.File.Close()
+	}
+	os.Remove(oldFileName)
 
 	uploadMut.Lock()
 	delete(uploads, u.ID)
+	delete(currentUpl, u.FileInfo.String())
 	uploadMut.Unlock()
 }
 
