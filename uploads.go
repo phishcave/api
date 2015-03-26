@@ -23,9 +23,9 @@ const (
 )
 
 var (
-	uploads    map[uint]*Upload
-	currentUpl map[string]struct{}
-	uploadMut  sync.RWMutex
+	uploads     map[uint]*Upload
+	currentUpls map[string]struct{}
+	uploadMut   sync.RWMutex
 )
 
 type Upload struct {
@@ -66,6 +66,16 @@ func createSlot(req UploadRequest) (uint, error) {
 	}
 
 	uploadMut.Lock()
+
+	// Ensure this upload is not duplicated
+	uploadUniqueID := req.String()
+	if _, ok := currentUpls[uploadUniqueID]; ok {
+		uploadMut.Unlock()
+		return 0, errAlreadyUploading
+	}
+	currentUpls[uploadUniqueID] = struct{}{}
+
+	// Generate a unique ID
 	var id uint
 	for {
 		id = uint(rand.Uint32())
@@ -79,7 +89,6 @@ func createSlot(req UploadRequest) (uint, error) {
 			break
 		}
 	}
-	currentUpl[req.String()] = struct{}{}
 	uploadMut.Unlock()
 
 	go upload.manage()
@@ -174,7 +183,7 @@ Cleanup:
 
 	uploadMut.Lock()
 	delete(uploads, u.ID)
-	delete(currentUpl, u.FileInfo.String())
+	delete(currentUpls, u.FileInfo.String())
 	uploadMut.Unlock()
 }
 
