@@ -44,7 +44,7 @@ func main() {
 	gets.Handle("/upload/{upload_id}/finished", handleErr(finishedHandler.ServeHTTP))
 	gets.Handle("/upload/{upload_id}/processed", handleErr(processedHandler.ServeHTTP))
 
-	posts.Handle("upload/chunk/{upload_id}/{chunk_id}", handleErr(chunkHandler))
+	posts.Handle("upload/{upload_id}/chunk/{chunk_id}", handleErr(chunkHandler))
 	posts.Handle("upload", handleErr(uploadHandler))
 
 	log.Println(http.ListenAndServe(net.JoinHostPort("", port), mux))
